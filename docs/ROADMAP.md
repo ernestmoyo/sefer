@@ -3,38 +3,40 @@
 A protocol earns trust by being small, then proven, then extended. Each phase ships
 something runnable and is gated on the previous one being solid.
 
-## Phase 0 — Foundation `sefer/0.1` · *in progress*
+## Phase 0 — Foundation `sefer/0.1` · ✅ done
 
 The spine: the protocol as typed, tested code. No network yet.
 
 - [x] Naming + ontology (Sefer / Sofer / shaliach / shem / parashah / reshumah / chotam)
 - [x] `docs/PROTOCOL.md`, `docs/ARCHITECTURE.md`
-- [ ] `@sefer/core`
-  - [ ] shem address grammar — parse / serialize / validate
-  - [ ] Sefer Canonical JSON (`canonicalize`)
-  - [ ] reshumah + capability + endpoint Zod schemas
-  - [ ] chotam — Ed25519 self-seal + verify; key thumbprint (`kid`)
-  - [ ] identity helpers — keypair generation, `did:sefer` derivation
-  - [ ] tests ≥ 80% across address / canonical / chotam / schema
-- [ ] CI: typecheck + build + test on every push
+- [x] `@sefer/core`
+  - [x] shem address grammar — parse / serialize / validate
+  - [x] Sefer Canonical JSON (`canonicalize`)
+  - [x] reshumah + capability + endpoint Zod schemas
+  - [x] chotam — Ed25519 self-seal + verify; key thumbprint (`kid`)
+  - [x] identity helpers — keypair generation, `did:sefer` derivation
+  - [x] tests ≥ 80% (≈94%) across address / canonical / chotam / schema
+- [~] CI: workflow written (`.github/workflows/ci.yml`); awaiting `workflow` token scope to push
 
-**Done when:** an agent can build a reshumah, seal it, and another can verify it — fully
-offline, with one import.
+**Done:** an agent can build a reshumah, seal it, and another can verify it offline, one import.
 
-## Phase 1 — A living registry `sefer/0.1`
+## Phase 1 — A living registry `sefer/0.1` · ✅ core done
 
-Make it networked and usable end to end.
+Networked and usable end to end. 81 tests green; `npm run demo` runs the full loop.
 
-- [ ] `@sefer/sofer-kit` — storage interface (Repository pattern) + in-memory & SQLite
-      adapters; parashah authorization; hash-chained audit log
-- [ ] `apps/sofer` — reference Sofer over HTTP (Hono): `inscribe`, `resolve`, `discover`,
-      `delegate`; serves signed responses
-- [ ] `@sefer/sdk` — `inscribe` / `resolve` / `discover`, local chotam verification,
+- [x] `@sefer/sofer-kit` — storage interface (Repository pattern) + in-memory adapter;
+      parashah authorization (open + allowlist); always-on TOFU key-binding;
+      hash-chained audit log; capability discovery (lexical)
+- [x] `apps/sofer` — reference Sofer over HTTP (Hono): `inscribe`, `resolve`, `discover`,
+      `audit`
+- [x] `@sefer/sdk` — `inscribe` / `resolve` / `discover`, local chotam verification,
       TTL-aware client cache, re-inscription heartbeat helper
-- [ ] `examples/` — a geocoder shaliach that inscribes itself; a caller that discovers it
-      by intent and invokes it over MCP
+- [x] `examples/demo` — geocoder inscribes itself; a finder discovers it by intent;
+      one-command `npm run demo` + a three-terminal realistic flow
+- [ ] *carried to later:* SQLite/Postgres store adapter; `delegate` route + signed
+      responses; invoking the discovered agent over a live MCP endpoint
 
-**Done when:** `examples/` runs the full loop against a local Sofer with no hand-wiring.
+**Done:** `examples/demo` runs the full loop against a Sofer with no hand-wiring.
 
 ## Phase 2 — Trust & capability depth `sefer/0.2`
 

@@ -70,23 +70,39 @@ We borrow the good ideas and reject the ones that do not transfer — see [`docs
 ```
 sefer/
 ├── packages/
-│   └── core/          @sefer/core — the protocol as code: addresses, records,
-│                      capabilities, canonicalization, and the chotam seal.
-│                      Pure, dependency-light, runs anywhere. (this increment)
-│   ├── sdk/           @sefer/sdk — client: inscribe / resolve / discover.   (next)
-│   └── sofer-kit/     building blocks for running a Sofer registry node.    (next)
+│   ├── core/          @sefer/core — the protocol as code: addresses, records,
+│   │                  capabilities, canonicalization, and the chotam seal.
+│   │                  Pure, dependency-light, runs anywhere.
+│   ├── sofer-kit/     @sefer/sofer-kit — registry building blocks: storage,
+│   │                  TOFU authorization, hash-chained audit, discovery.
+│   └── sdk/           @sefer/sdk — client: inscribe / resolve / discover, with
+│                      local seal verification, TTL cache, and a heartbeat.
 ├── apps/
-│   └── sofer/         a reference Sofer (registry) service.                 (next)
-├── examples/          runnable shlichim that inscribe & discover.           (next)
+│   └── sofer/         @sefer/sofer-app — a reference Sofer (registry) over Hono.
+├── examples/
+│   └── demo/          runnable shlichim that inscribe & discover (`npm run demo`).
 └── docs/
     ├── PROTOCOL.md       the wire format & data models (normative)
     ├── ARCHITECTURE.md   the reasoning, trust model, governance, edge cases
     └── ROADMAP.md        phased plan v0.1 → federation
 ```
 
+## Quickstart
+
+```bash
+npm install
+npm run build && npm test     # 81 tests across 4 packages
+npm run demo                  # the full name·find·trust loop in one process
+
+# …or run the network for real:
+npm run sofer                 # reference Sofer on :8787
+npm run inscribe -w @sefer/demo
+npm run find -w @sefer/demo -- "convert an address to coordinates"
+```
+
 ## Status
 
-**v0.1 — foundation.** The `@sefer/core` protocol layer is the spine everything else hangs from, so it is built first, fully typed and tested. This is an early, evolving protocol; the spec in `docs/` is the source of truth and is versioned (`sefer/0.1`).
+**v0.1 — Phases 0 & 1 done.** The `@sefer/core` protocol spine, the `sofer-kit` registry engine, the reference `Sofer` service, the `sdk`, and a runnable demo are all built and tested end to end (81 tests). This is an early, evolving protocol; the spec in `docs/` is the source of truth and is versioned (`sefer/0.1`). See [`docs/ROADMAP.md`](docs/ROADMAP.md) for what's next.
 
 ## License
 

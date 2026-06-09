@@ -5,6 +5,7 @@
   "description": "Sefer — the Book of Names. A discovery, naming, and trust layer for AI agents (DNS-for-agents).",
   "license": "Apache-2.0",
   "type": "module",
+  "packageManager": "npm@11.6.2",
   "engines": {
     "node": ">=20"
   },
@@ -14,14 +15,16 @@
     "examples/*"
   ],
   "scripts": {
-    "build": "npm run build --workspaces --if-present",
-    "test": "npm run test --workspaces --if-present",
-    "typecheck": "npm run typecheck --workspaces --if-present",
-    "clean": "npm run clean --workspaces --if-present",
-    "core:test": "npm run test -w @sefer/core",
-    "core:build": "npm run build -w @sefer/core"
+    "build": "turbo run build",
+    "test": "turbo run test",
+    "typecheck": "turbo run typecheck",
+    "clean": "turbo run clean && rimraf node_modules/.cache .turbo",
+    "sofer": "npm run start -w @sefer/sofer-app",
+    "demo": "npm run demo -w @sefer/demo"
   },
   "devDependencies": {
+    "rimraf": "^6.0.1",
+    "turbo": "^2.3.3",
     "typescript": "^5.7.2"
   }
 }
