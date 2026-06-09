@@ -6,7 +6,7 @@ import { canonicalize, type Reshuma } from "@sefer/core";
  * commits to the previous entry's hash, so any retroactive edit breaks the chain and is
  * detectable. This is a local transparency aid, not a global ledger (see ARCHITECTURE §8).
  */
-export type AuditAction = "inscribe" | "update" | "tombstone";
+export type AuditAction = "inscribe" | "update" | "tombstone" | "vouch";
 
 export interface AuditEntry {
   readonly seq: number;

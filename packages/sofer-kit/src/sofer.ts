@@ -1,4 +1,12 @@
-import { parseShem, verifyReshumah, type Reshuma } from "@sefer/core";
+import {
+  appendCounterSeal,
+  counterSealReshumah,
+  parseShem,
+  verifyCounterSeal,
+  verifyReshumah,
+  type Reshuma,
+  type ShaliachKeypair,
+} from "@sefer/core";
 import { storeKey, type ReshumaStore } from "./store";
 import { openAuthorizer, type Authorizer } from "./authz";
 import type { AuditLog } from "./audit";
@@ -11,6 +19,13 @@ export interface SoferOptions {
   audit?: AuditLog;
   /** Clock injection for deterministic tests. */
   now?: () => Date;
+  /**
+   * This Sofer's own identity, used to counter-seal (vouch for) records. The `role` is
+   * advisory; callers decide what a seal from this key grants. See docs/ARCHITECTURE.md §4.
+   */
+  signer?: { keypair: ShaliachKeypair; role: string };
+  /** When true (and a signer is set), every accepted record is auto-vouched on inscribe. */
+  autoVouch?: boolean;
 }
 
 export interface InscribeResult {
@@ -76,7 +91,50 @@ export class Sofer {
       });
     }
 
+    if (this.options.signer && this.options.autoVouch) {
+      await this.vouch(incoming);
+    }
+
     return { ok: true, shem: incoming.shem, level: verdict.level };
+  }
+
+  /**
+   * Counter-seal (vouch for) an already-inscribed record with this Sofer's own key. The
+   * seal is appended additively (the self-seal is untouched) and re-stored. Idempotent:
+   * a second vouch by the same key is a no-op.
+   */
+  async counterSeal(shem: string): Promise<{ ok: boolean; error?: string }> {
+    if (!this.options.signer) return { ok: false, error: "this Sofer has no signer configured" };
+    const record = await this.resolve(shem);
+    if (!record) return { ok: false, error: "no such shem" };
+    await this.vouch(record);
+    return { ok: true };
+  }
+
+  private async vouch(record: Reshuma): Promise<void> {
+    const signer = this.options.signer;
+    if (!signer) return;
+    // Idempotency guard must require a *valid* existing seal from our own key. A kid-only
+    // check is exploitable: a hostile submitter can pre-inject a garbage counter-seal
+    // bearing our kid (counter-seals live outside the signed body) to suppress our vouch
+    // forever (denial-of-vouch). Verifying defeats that — a forged seal won't verify.
+    const alreadyVouched = (record.chotam.counterSeals ?? []).some(
+      (s) => s.kid === signer.keypair.kid && verifyCounterSeal(record, s, signer.keypair.publicJwk),
+    );
+    if (alreadyVouched) return;
+
+    const seal = counterSealReshumah(record, signer.keypair, signer.role, this.now().toISOString());
+    const vouched = appendCounterSeal(record, seal);
+    await this.store.put(vouched);
+    if (this.options.audit) {
+      await this.options.audit.append({
+        action: "vouch",
+        shem: vouched.shem,
+        kid: signer.keypair.kid,
+        record: vouched,
+        ts: this.now().toISOString(),
+      });
+    }
   }
 
   /** Resolve a shem to its record (by parashah + name; version/capability selectors ignored in v0.1). */

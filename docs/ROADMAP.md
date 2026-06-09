@@ -38,9 +38,21 @@ Networked and usable end to end. 81 tests green; `npm run demo` runs the full lo
 
 **Done:** `examples/demo` runs the full loop against a Sofer with no hand-wiring.
 
-## Phase 2 — Trust & capability depth `sefer/0.2`
+## Phase 2 — Trust & capability depth `sefer/0.2` · ⏳ in progress
 
-- [ ] Counter-seals (`vouched`) and domain-proof (`verified`) trust levels
+Designed and adversarially reviewed by a multi-agent loop (design → critique → converge →
+implement+verify → review → fix). The keystone that loop surfaced: the signing primitive
+had **no domain separation**, so it landed first as Increment 0.
+
+- [x] **Increment 0 — domain-separated signing + version forward-compat.** `signTagged`/
+      `verifyTagged` fold a constant type tag into every new signed kind's preimage
+      (blocks cross-protocol signature confusion); `v` accepts any `sefer/0.x`.
+- [x] **Counter-seals → `vouched`.** A Sofer/org vouches by signing a tagged preimage
+      committing to the self-seal sig + subject key + role; the verifier derives the grant
+      from its OWN trusted-issuer config, never the seal's claim. Freshness enforced
+      (expired → no elevation; post-dated seals ignored); bounded; TOFU-safe (resists
+      denial-of-vouch). `verified` level grantable by explicit caller policy.
+- [ ] `verified` via automated **DomainProof** (DNS-TXT / X.509 key↔org binding)
 - [ ] Key rotation chains
 - [ ] Signed negative responses ("no such shem"); multi-Sofer queries
 - [ ] Semantic `discover()` — `intent` embeddings + vector search (pluggable)

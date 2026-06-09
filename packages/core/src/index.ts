@@ -15,4 +15,6 @@ export * from "./identity";
 export * from "./capability";
 export * from "./endpoint";
 export * from "./chotam";
+export * from "./counterseal";
+export * from "./trust";
 export * from "./reshumah";

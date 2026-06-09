@@ -6,7 +6,9 @@ import {
   type CreateReshumaParams,
   type Reshuma,
   type ShaliachKeypair,
+  type TrustedIssuer,
   type VerifyOutcome,
+  type VerifyParams,
 } from "@sefer/core";
 import { SeferHttpError, SeferVerificationError } from "./errors";
 
@@ -21,6 +23,12 @@ export interface SeferOptions {
   now?: () => Date;
   /** Enable the TTL-aware resolve cache (default true). */
   cache?: boolean;
+  /**
+   * Issuers this client trusts to vouch for records. When set, resolve()/discover()
+   * report `effectiveLevel` of "vouched"/"verified" for records with recognized
+   * counter-seals; otherwise everything is reported at "self".
+   */
+  trust?: { issuers?: TrustedIssuer[] };
 }
 
 export interface InscribeResponse {
@@ -88,6 +96,11 @@ export class Sefer {
     return this.options.now ? this.options.now() : new Date();
   }
 
+  private verifyParams(): VerifyParams {
+    const issuers = this.options.trust?.issuers;
+    return { now: this.now(), ...(issuers && issuers.length > 0 ? { trustedIssuers: issuers } : {}) };
+  }
+
   /** Build, self-seal, and inscribe a reshumah for this shaliach. */
   async inscribe(
     params: CreateReshumaParams,
@@ -118,7 +131,7 @@ export class Sefer {
     if (!res.ok) throw new SeferHttpError(res.status, text);
 
     const record = JSON.parse(text) as Reshuma;
-    const verify = verifyReshumah(record, this.now());
+    const verify = verifyReshumah(record, this.verifyParams());
     if (!verify.ok) throw new SeferVerificationError(shem, verify.reasons);
 
     const resolved: ResolvedReshuma = { record, verify };
@@ -151,7 +164,7 @@ export class Sefer {
 
     const out: DiscoverResult[] = [];
     for (const hit of body.results) {
-      const verify = verifyReshumah(hit.record, this.now());
+      const verify = verifyReshumah(hit.record, this.verifyParams());
       if (verify.ok) {
         out.push({ record: hit.record, score: hit.score, matchedCapabilities: hit.matchedCapabilities, verify });
       }

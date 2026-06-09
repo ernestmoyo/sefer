@@ -6,6 +6,7 @@ import { ChotamSchema } from "./chotam";
 import { signObject, verifyObject } from "./chotam";
 import { parseShem, serializeShem, type Shem } from "./address";
 import { SEFER_PROTOCOL_VERSION } from "./version";
+import { computeEffectiveLevel, type RecognizedSeal, type TrustedIssuer } from "./trust";
 
 const LABEL_RE = /^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$/;
 
@@ -29,6 +30,11 @@ const PublicKeySchema = z.object({
 });
 
 const TrustSchema = z.object({
+  /**
+   * The shaliach's self-asserted level. ADVISORY ONLY — a verifier MUST recompute the
+   * effective level from `chotam.counterSeals` against its own trusted issuers, and never
+   * elevate based on this field. (sefer/0.1 records always carry "self" here.)
+   */
   level: z.enum(TRUST_LEVELS),
   vouchedBy: z.array(z.string()).optional(),
 });
@@ -42,7 +48,9 @@ const MetaSchema = z.object({
 
 /** The reshumah without its seal — the exact payload the chotam signs over. */
 export const UnsealedReshumaSchema = z.object({
-  v: z.literal(SEFER_PROTOCOL_VERSION),
+  // Forward-compatible per PROTOCOL §6: accept ANY sefer/0.x, not a closed set, so a
+  // deployed verifier handles future minor versions without a code change.
+  v: z.string().regex(/^sefer\/0\.\d+$/, "unrecognized sefer/0.x version"),
   shem: z.string().min(1),
   shaliach: ShaliachBlockSchema,
   endpoints: z.array(EndpointSchema).min(1),
@@ -123,12 +131,28 @@ export function createReshumah(
   return { ...validated, chotam };
 }
 
+/** Options for {@link verifyReshumah}. A bare `Date` is accepted for back-compat (= `{ now }`). */
+export interface VerifyParams {
+  /** Clock for expiry evaluation (default now). */
+  now?: Date;
+  /**
+   * Issuers the caller trusts and the level each grants. When provided, recognized
+   * counter-seals elevate `effectiveLevel` to "vouched"/"verified". When omitted, the
+   * record is reported at "self".
+   */
+  trustedIssuers?: readonly TrustedIssuer[];
+}
+
 /** The outcome of verifying a reshumah. */
 export interface VerifyOutcome {
   /** True only if the record is structurally valid and the self-seal verifies. */
   ok: boolean;
-  /** Established trust level, or "invalid" if verification failed. */
+  /** The computed trust level (= `effectiveLevel`), or "invalid" if verification failed. */
   level: TrustLevel | "invalid";
+  /** Level derived from recognized counter-seals; "self" when none are trusted/present. */
+  effectiveLevel: TrustLevel | "invalid";
+  /** Counter-seals that verified AND came from a trusted issuer. */
+  recognizedSeals: RecognizedSeal[];
   /** Human-readable reasons for any failures (empty when ok). */
   reasons: string[];
   /** True when the record's expiresAt is in the past (advisory; does not set ok=false). */
@@ -141,17 +165,27 @@ export interface VerifyOutcome {
  *  2. key integrity (publicKey.kid is the true thumbprint of publicKey.jwk),
  *  3. seal binding (chotam.kid === publicKey.kid),
  *  4. self-seal signature over the *raw* record sans chotam (unknown fields preserved),
- *  5. shem ↔ shaliach consistency.
+ *  5. shem ↔ shaliach consistency,
+ *  6. effective trust level from recognized counter-seals (if `trustedIssuers` supplied).
  *
- * Counter-seal (vouched/verified) evaluation arrives in Phase 2; today a valid record
- * is reported at level "self".
+ * A valid record with no recognized counter-seals is reported at level "self". A bad
+ * counter-seal is ignored (it never flips `ok`), per docs/PROTOCOL.md §4.2.
  */
-export function verifyReshumah(record: unknown, now: Date = new Date()): VerifyOutcome {
+export function verifyReshumah(record: unknown, params?: VerifyParams | Date): VerifyOutcome {
+  const opts: VerifyParams = params instanceof Date ? { now: params } : (params ?? {});
+  const now = opts.now ?? new Date();
   const reasons: string[] = [];
 
   const parsed = ReshumaSchema.safeParse(record);
   if (!parsed.success) {
-    return { ok: false, level: "invalid", reasons: [`schema: ${parsed.error.message}`], expired: false };
+    return {
+      ok: false,
+      level: "invalid",
+      effectiveLevel: "invalid",
+      recognizedSeals: [],
+      reasons: [`schema: ${parsed.error.message}`],
+      expired: false,
+    };
   }
   const r = parsed.data;
 
@@ -187,5 +221,18 @@ export function verifyReshumah(record: unknown, now: Date = new Date()): VerifyO
 
   const expired = r.meta.expiresAt !== undefined && new Date(r.meta.expiresAt).getTime() < now.getTime();
   const ok = reasons.length === 0;
-  return { ok, level: ok ? "self" : "invalid", reasons, expired };
+
+  if (!ok) {
+    return { ok, level: "invalid", effectiveLevel: "invalid", recognizedSeals: [], reasons, expired };
+  }
+
+  // Effective trust level from recognized counter-seals (self-seal already verified).
+  // `now` lets computeEffectiveLevel enforce freshness: it suppresses elevation on an
+  // expired record and ignores post-dated seals.
+  const { level, recognizedSeals } =
+    opts.trustedIssuers && opts.trustedIssuers.length > 0
+      ? computeEffectiveLevel(r, opts.trustedIssuers, now)
+      : { level: "self" as TrustLevel, recognizedSeals: [] as RecognizedSeal[] };
+
+  return { ok, level, effectiveLevel: level, recognizedSeals, reasons, expired };
 }

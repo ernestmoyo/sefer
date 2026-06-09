@@ -80,8 +80,9 @@ A *reshumah* is the inscribed record for one shaliach at one version. It is a JS
     "jwk": { "kty": "OKP", "crv": "Ed25519", "x": "..." }
   },
   "trust": {
-    "level": "self",                        // self | vouched | verified  (see ARCHITECTURE §4)
-    "vouchedBy": []                         // kids of Sofarim that counter-sealed
+    "level": "self",                        // SELF-CLAIM ONLY; never used to elevate (§4.2)
+    "vouchedBy": []                         // optional self-asserted hint; the authoritative
+                                            // vouches are chotam.counterSeals (outside the body)
   },
   "meta": {
     "createdAt": "2026-06-09T00:00:00.000Z",
@@ -166,11 +167,54 @@ produced by the holder of `publicKey`, without trusting the Sofer that served it
 
 1. Strip `chotam`; canonicalize; verify `chotam.sig` against `publicKey.jwk`.
 2. Assert `chotam.kid === publicKey.kid` and that `kid` is the correct thumbprint of `jwk`.
-3. Each `counterSeal` is verified the same way against the counter-signer's known key;
-   an unrecognized counter-signer's seal is ignored, not an error.
+3. Each `counterSeal` is evaluated per §4.3 against an issuer key the **verifier**
+   independently trusts; an unrecognized or invalid counter-seal is ignored, not an error.
 
-A record that fails step 1 or 2 MUST be rejected. Self-seal alone yields `trust.level:
-"self"`; recognized counter-seals raise it (see ARCHITECTURE §4).
+A record that fails step 1 or 2 MUST be rejected. The body's `trust.level` is a self-claim
+and MUST NOT be used to elevate trust; the **effective** level is computed by the verifier
+from recognized counter-seals (§4.3, ARCHITECTURE §4). Self-seal alone yields `self`.
+
+### 4.3 Counter-seals & domain separation (`sefer/0.2`)
+
+Every signed object kind other than the self-seal is **domain-separated**: it signs the
+canonical bytes of `{ "typ": <constant tag>, "payload": <object> }`, where `typ` is a
+unique constant (e.g. `"sefer-counterseal/0.2"`). A verifier reconstructs the preimage
+with the expected `typ`, so a signature minted for one kind can never be replayed as
+another. The self-seal (§4.1) remains untagged for `sefer/0.1` wire-compatibility; its
+in-body `v` and full record shape are its discriminator and cannot collide with a tagged
+preimage's bytes.
+
+A **counter-seal** lets a Sofer or org vouch for a record. Its `payload` MUST commit to:
+
+```jsonc
+{
+  "sealSig":    "<the record's chotam.sig>",  // binds the vouch to this exact sealed record
+  "subjectKid": "<the record's publicKey.kid>",
+  "role":       "sofer",                       // advisory; see below
+  "signedAt":   "2026-06-09T00:00:00.000Z",
+  "proofRef":   "<optional DomainProof pointer>"
+}
+```
+
+signed with the issuer's Ed25519 key, producing `counterSeals[] = { kid, sig, role,
+signedAt, proofRef? }`. To evaluate a counter-seal a verifier:
+
+1. looks up `seal.kid` in its **own** set of trusted issuers; if absent, ignore the seal;
+2. reconstructs the tagged preimage from the record and verifies `seal.sig` against the
+   trusted issuer's key; if it fails, ignore the seal;
+3. grants the level its **own** trust entry assigns to that issuer — **never** the seal's
+   self-asserted `role`.
+
+The effective level is the highest grant among recognized seals, else `self`. Because the
+counter-seal lives outside the signed body, appending one never invalidates the self-seal.
+Freshness is enforced at evaluation: an **expired** record grants no level (only `self`),
+and a **post-dated** seal (`signedAt` after the verifier's clock) is ignored.
+
+The `verified` level is granted to issuers the verifier recognizes as verification
+authorities — e.g. a CA it has configured out of band, taking responsibility for the
+key↔org binding. A **DomainProof** object that *automates* establishing that binding
+(DNS-TXT / X.509) is specified in a later `sefer/0.2` increment; it is a convenience for
+discovering such issuers, not a precondition for the level.
 
 ---
 
@@ -194,6 +238,17 @@ The reference implementation is `@sefer/core`'s `canonicalize()`.
 
 ## 6. Versioning
 
-The protocol version `v` (e.g. `sefer/0.1`) is part of every signed record. Minor
-versions add optional fields (backward-compatible). A resolver MUST ignore unknown
-fields it does not understand and MUST NOT strip them before re-verifying a signature.
+The protocol version `v` (e.g. `sefer/0.1`, `sefer/0.2`) is part of every signed record.
+Minor versions add optional fields only (backward-compatible). Forward-compatibility is
+**normative**:
+
+- A verifier MUST accept any `sefer/0.x` record it structurally understands, and MUST
+  ignore unknown fields it does not understand.
+- A verifier MUST NOT strip unknown fields before re-verifying a signature.
+- Records are minted at the lowest version whose fields they use; a `sefer/0.1` record is
+  fully valid under a `sefer/0.2` verifier and may carry `sefer/0.2` counter-seals (which
+  live outside the signed body).
+
+There is **one** version line per generation (`sefer/0.2`), shared by all object kinds;
+object kinds are distinguished by the domain `typ` tag (§4.3) and by route/schema, never
+by parallel per-kind version strings.
